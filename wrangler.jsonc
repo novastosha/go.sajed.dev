@@ -1,0 +1,17 @@
+{
+  "compatibility_date": "2025-04-01",
+  "main": "src/index.ts",
+  "name": "go.sajed.dev",
+  "preview_urls": false,
+  "workers_dev": false,
+  "upload_source_maps": true,
+  "observability": {
+    "enabled": true
+  },
+  "kv_namespaces": [
+    {
+      "binding": "SHORTENER_KV",
+      "id": "49e8bf517ef342cc9c3e75186a716d6b"
+    }
+  ]
+}
