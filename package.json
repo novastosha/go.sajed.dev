@@ -1,5 +1,5 @@
 {
-  "name": "go.sajed.dev",
+  "name": "go-sajed-dev",
   "description": "The backend for go.sajed.dev, a URL shortener service with analytics and QR code generation.",
   "cloudflare": {
     "label": "Backend OpenAPI Template",

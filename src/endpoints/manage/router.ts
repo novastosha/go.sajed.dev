@@ -289,7 +289,7 @@ router.get("/", (c) => {
 `));
 });
 
-type ShortenedEntry = {
+export type ShortenedEntry = {
     slug: string;
     dest: string;
     expiry?: string; // ISO date string

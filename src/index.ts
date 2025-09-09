@@ -27,12 +27,8 @@ function extractSlug(req: Request): string | null {
   }
 }
 
-/**
- * Main route: catch-all; we will extract slug based on host/path and redirect.
- * Use a 302 (temporary) by default; change to 301 if you want permanent.
- */
-// Use the manage/router.ts
-import { router } from "./endpoints/manage/router";
+
+import { router, ShortenedEntry } from "./endpoints/manage/router";
 app.route('/manage', router)
 
 app.get('*', async (c) => {
@@ -47,29 +43,29 @@ app.get('*', async (c) => {
   const qs = url.search // includes leading '?' or ''
 
 
-  try {
-    // @ts-ignore - LINKS binding may not exist in development
-    const kv = c.env?.LINKS
-    if (kv && typeof kv.get === 'function') {
-      // if you stored JSON or plain URL. We assume plain URL string.
-      const dest = await (kv.get as KVNamespace).get<string>(slug)
-      if (dest) {
-        // If dest already contains a query, we append current qs only if present
-        const redirectUrl = qs && !dest.includes('?') ? dest + qs : dest
-        return c.redirect(redirectUrl, 302)
-      }
-    }
-  } catch (err) {
-    // Continue to fallback; don't fail hard on KV errors.
-    console.warn('KV lookup failure', err)
+  const entryData = await c.env.SHORTENER_KV.get("short:" + slug)
+  if (!entryData) {
+    return c.text('Not found', 404)
   }
 
+  const entry = JSON.parse(entryData) as ShortenedEntry
+  if (!entry || !entry.dest) {
+    return c.text('Not found', 404)
+  }
+  if (entry.expiry) {
+    const now = new Date()
+    const exp = new Date(entry.expiry)
+    if (exp < now) {
+      // remove form kv
+      await c.env.SHORTENER_KV.delete("short:" + slug)
 
-  const suffix = slug ? encodeURI(slug) : ''
-  const target = BASE_REDIRECT.endsWith('/') || suffix === '' ? BASE_REDIRECT + suffix : BASE_REDIRECT + '/' + suffix
-  const final = qs ? target + qs : target
+      return c.text('Link expired', 410)
+    }
+  }
 
-  return c.redirect(final, 302)
+  // Redirect to destination
+  let final = entry.dest + qs
+  return c.redirect(final, 301)
 })
 
 export default {
