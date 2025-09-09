@@ -149,11 +149,12 @@ router.get("/", (c) => {
         catch(e){ linksBody.innerHTML = '<tr><td colspan="5" style="padding:12px;">Unexpected response (not JSON)</td></tr>'; listState.textContent = 'Invalid response'; return; }
 
         // expect data to be an array of {slug,dest,name?,expiry?}
-        if (!Array.isArray(data)) {
+        if (!Array.isArray(data.entries)) {
           linksBody.innerHTML = '<tr><td colspan="5" style="padding:12px;">Unexpected response format</td></tr>';
           listState.textContent = 'Invalid format';
           return;
         }
+        data = data.entries;
 
         if (data.length === 0) {
           linksBody.innerHTML = '<tr><td colspan="5" class="muted" style="padding:12px">No short links found.</td></tr>';
@@ -333,7 +334,7 @@ router.post("/", async (c) => {
             }
         }
 
-        if(!slug) {
+        if (!slug) {
             let tries = 0;
             do {
                 slug = genSlug(6);
