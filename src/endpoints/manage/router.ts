@@ -6,7 +6,7 @@ import { sl } from "zod/v4/locales";
 export const router = fromHono(new Hono());
 
 router.get("/", (c) => {
-    return c.html(htmlTemplate('Manage links — go.sajed.dev', `
+  return c.html(htmlTemplate('Manage links — go.sajed.dev', `
   <div style="display:flex;flex-direction:column;gap:14px">
     <!-- Manager token (required for all operations) -->
     <div style="display:flex;gap:12px;align-items:center;">
@@ -89,305 +89,115 @@ router.get("/", (c) => {
     </div>
   </div>
 
-  <script>
-  (function(){
-    // helpers
-    const genSlug = (len=6) => {
-      const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-      let out = '';
-      for (let i=0;i<len;i++) out += chars[Math.floor(Math.random()*chars.length)];
-      return out;
-    };
-    const tokenInput = document.getElementById('managerToken');
-    const tokenState = document.getElementById('tokenState');
-    const applyBtn = document.getElementById('tokenApply');
-    const listState = document.getElementById('listState');
-
-    function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-
-    // token UI
-    function updateTokenState(){
-      const t = (tokenInput.value||'').trim();
-      if (!t) {
-        tokenState.textContent = 'Token required for operations';
-        tokenState.style.color = 'var(--muted)';
-        return false;
-      }
-      tokenState.textContent = 'Token set (sent with requests)';
-      tokenState.style.color = 'var(--accent)';
-      return true;
-    }
-    applyBtn.addEventListener('click', () => updateTokenState());
-    tokenInput.addEventListener('keyup', () => { tokenState.textContent = 'Unsaved token'; tokenState.style.color = 'var(--muted)'; });
-
-    // Query / listing logic
-    const queryBtn = document.getElementById('queryBtn');
-    const exportBtn = document.getElementById('exportJson');
-    const linksBody = document.getElementById('linksBody');
-
-    async function fetchAllKeys(){
-      if (!updateTokenState()) { alert('Please enter manager token'); return; }
-      listState.textContent = 'Querying…';
-      try {
-        const form = new FormData();
-        form.set('action', 'QUERY');   // server expected action
-        form.set('token', tokenInput.value.trim());
-        const res = await fetch('/manage', { method: 'POST', body: form });
-        const text = await res.text();
-        if (!res.ok) {
-          linksBody.innerHTML = '<tr><td colspan="5" style="padding:12px;color:var(--danger)">Error: ' + escapeHtml(text) + '</td></tr>';
-          listState.textContent = 'Error';
-          return;
-        }
-        let data;
-        try { data = JSON.parse(text); }
-        catch(e){ linksBody.innerHTML = '<tr><td colspan="5" style="padding:12px;">Unexpected response (not JSON)</td></tr>'; listState.textContent = 'Invalid response'; return; }
-
-        // expect data to be an array of {slug,dest,expiry?}
-        if (!Array.isArray(data.entries)) {
-          linksBody.innerHTML = '<tr><td colspan="5" style="padding:12px;">Unexpected response format</td></tr>';
-          listState.textContent = 'Invalid format';
-          return;
-        }
-        data = data.entries;
-
-        if (data.length === 0) {
-          linksBody.innerHTML = '<tr><td colspan="5" class="muted" style="padding:12px">No short links found.</td></tr>';
-          listState.textContent = 'Done';
-          return;
-        }
-
-        // build rows
-        const rows = data.map(item => {
-          const slug = escapeHtml(item.slug || '');
-          const dest = escapeHtml(item.dest || '');
-          // expiry: show human-friendly or dash
-          const expiry = item.expiry ? (new Date(item.expiry).toISOString().split('T')[0]) : '—';
-          const shortUrl = 'https://go.sajed.dev/' + encodeURIComponent(item.slug || '');
-          return \`
-            <tr>
-              <td style="padding:10px;vertical-align:top"><strong>\${slug}</strong></td>
-              <td style="padding:10px;vertical-align:top"><a class="small" href="\${shortUrl}" target="_blank" rel="noreferrer">\${shortUrl}</a><div style="margin-top:6px" class="muted"><pre class="small" style="margin:0;background:transparent;padding:0">\${dest}</pre></div></td>
-              <td style="padding:10px;vertical-align:top">\${expiry}</td>
-              <td style="padding:10px;vertical-align:top">
-                <div style="display:flex;gap:6px;flex-direction:column">
-                  <form method="post" action="/manage" style="display:inline">
-                    <input type="hidden" name="slug" value="\${escapeHtml(item.slug || '')}">
-                    <input type="hidden" name="action" value="DELETE">
-                    <input type="hidden" name="token" value="\${escapeHtml(tokenInput.value.trim())}">
-                    <button class="ghost" type="submit" style="width:100%">Delete</button>
-                  </form>
-                </div>
-              </td>
-            </tr>\`;
-        }).join('\\n');
-
-        linksBody.innerHTML = rows;
-        listState.textContent = 'Done — ' + data.length + ' items';
-      } catch (err) {
-        linksBody.innerHTML = '<tr><td colspan="5" style="padding:12px;color:var(--danger)">Network error: ' + escapeHtml(String(err)) + '</td></tr>';
-        listState.textContent = 'Network error';
-      }
-    }
-
-    queryBtn.addEventListener('click', (ev) => { ev.preventDefault(); fetchAllKeys(); });
-    // auto-refresh on load
-    window.addEventListener('load', () => { /* do not auto-run if token empty */ if (tokenInput.value && tokenInput.value.trim()) fetchAllKeys(); });
-
-    exportBtn.addEventListener('click', async (ev) => {
-      ev.preventDefault();
-      if (!updateTokenState()) { alert('Please enter manager token'); return; }
-      listState.textContent = 'Exporting…';
-      try {
-        const form = new FormData();
-        form.set('action', 'QUERY');
-        form.set('token', tokenInput.value.trim());
-        const res = await fetch('/manage', { method: 'POST', body: form });
-        const text = await res.text();
-        if (!res.ok) { alert('Export failed: ' + text); listState.textContent = 'Error'; return; }
-        const data = JSON.parse(text);
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'links-export.json';
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
-        listState.textContent = 'Exported';
-      } catch (err) {
-        alert('Export error: ' + String(err));
-        listState.textContent = 'Error';
-      }
-    });
-
-    // ADD form behavior (preview + create)
-    const addForm = document.getElementById('addForm');
-    const addStatus = document.getElementById('addStatus');
-    const previewShort = document.getElementById('previewShort');
-    const previewDest = document.getElementById('previewDest');
-    const addSlug = document.getElementById('addSlug');
-    const addDest = document.getElementById('addDest');
-    const randomAddSlug = document.getElementById('randomAddSlug');
-
-    function updatePreview(){
-      const s = (addSlug.value || '').trim();
-      const short = s ? ('https://go.sajed.dev/' + encodeURIComponent(s)) : 'https://go.sajed.dev/…';
-      previewShort.textContent = short;
-      previewShort.href = s ? short : '#';
-      previewDest.textContent = (addDest.value || '—');
-    }
-    addSlug.addEventListener('input', updatePreview);
-    addDest.addEventListener('input', updatePreview);
-    randomAddSlug.addEventListener('click', () => { addSlug.value = genSlug(6); updatePreview(); });
-    updatePreview();
-
-    addForm.addEventListener('submit', async (ev) => {
-      ev.preventDefault();
-      if (!updateTokenState()) return alert('Please enter manager token');
-      addStatus.textContent = 'Creating…';
-      addStatus.style.color = 'var(--muted)';
-      const form = new FormData(addForm);
-      form.set('token', tokenInput.value.trim());
-      form.set('action', 'ADD');
-      try {
-        const res = await fetch('/manage', { method:'POST', body: form });
-        const json = await res.json();
-        if (!res.ok) {
-          addStatus.textContent = json.error || 'Unknown error';
-          addStatus.style.color = 'var(--danger)';
-        
-          return;
-        }
-
-
-        if (!json || !json.success) {
-          addStatus.textContent = json.error || 'Unknown error';
-          addStatus.style.color = 'var(--danger)';
-          return;
-        }
-
-        addStatus.textContent = 'Success link is now available at {}'.replace('{}', json.entry ? ('https://go.sajed.dev/' + json.entry.slug) : 'unknown');
-        addStatus.style.color = 'var(--success)';
-        // refresh list after create
-        await fetchAllKeys();
-      } catch (err) {
-        addStatus.textContent = 'Network error';
-        addStatus.style.color = 'var(--danger)';
-        alert('Network error: ' + String(err));
-      }
-    });
-  })();
-  </script>
+  <script type="text/javascript" src="https://cdn.sajed.dev/web/assets/go/index.js"></script>
 `));
 });
 
 export type ShortenedEntry = {
-    slug: string;
-    dest: string;
-    expiry?: string; // ISO date string
+  slug: string;
+  dest: string;
+  expiry?: string; // ISO date string
 }
 
 router.post("/", async (c) => {
-    const form = await c.req.formData();
-    const action = (form.get("action") || "").toString().toUpperCase();
-    const token = (form.get("token") || "").toString().trim();
-    if (!token) {
-        return c.text("Manager token is required", 400);
+  const form = await c.req.formData();
+  const action = (form.get("action") || "").toString().toUpperCase();
+  const token = (form.get("token") || "").toString().trim();
+  if (!token) {
+    return c.text("Manager token is required", 400);
+  }
+
+  if (token !== c.env.TOKEN_SECRET) {
+    return c.text("Invalid manager token", 403);
+  }
+  if (action === "QUERY") {
+    const list = await c.env.SHORTENER_KV.list({ prefix: "short:" });
+
+    const entries: ShortenedEntry[] = [];
+    for (const key of list.keys) {
+      const val = await c.env.SHORTENER_KV.get(key.name);
+      if (!val) continue;
+
+      const parsed = JSON.parse(val);
+      entries.push(parsed);
     }
 
-    if (token !== c.env.TOKEN_SECRET) {
-        return c.text("Invalid manager token", 403);
-    }
-    if (action === "QUERY") {
-        const list = await c.env.SHORTENER_KV.list({ prefix: "short:" });
+    return c.json({ success: true, entries });
+  }
 
-        const entries: ShortenedEntry[] = [];
-        for (const key of list.keys) {
-            const val = await c.env.SHORTENER_KV.get(key.name);
-            if (!val) continue;
+  if (action === "ADD") {
+    const dest = (form.get("dest") || "").toString().trim();
+    let slug = (form.get("slug") || "").toString().trim();
+    const expiry = (form.get("expiry") || "").toString().trim();
 
-            const parsed = JSON.parse(val);
-            entries.push(parsed);
-        }
-
-        return c.json({ success: true, entries });
+    if (typeof slug !== "string") {
+      return c.text("Invalid slug format", 400);
     }
 
-    if (action === "ADD") {
-        const dest = (form.get("dest") || "").toString().trim();
-        let slug = (form.get("slug") || "").toString().trim();
-        const expiry = (form.get("expiry") || "").toString().trim();
-
-        if (typeof slug !== "string") {
-            return c.text("Invalid slug format", 400);
-        }
-
-        if (typeof dest !== "string") {
-            return c.text("Invalid destination URL", 400);
-        }
-
-        if (!dest || !/^https?:\/\//.test(dest)) {
-            return c.text("Invalid destination URL", 400);
-        }
-
-        if (expiry) {
-            const d = new Date(expiry);
-            if (isNaN(d.getTime())) {
-                return c.text("Invalid expiry date", 400);
-            }
-        }
-
-        if (!slug) {
-            let tries = 0;
-            do {
-                slug = genSlug(6);
-                const exists = await c.env.SHORTENER_KV.get("short:" + slug);
-                if (!exists) break;
-                tries++;
-            } while (tries < 5);
-            if (tries === 5) {
-                return c.text("Failed to generate unique slug, please try again", 500);
-            }
-        } else {
-            if (!/^[a-zA-Z0-9_-]{3,30}$/.test(slug)) {
-                return c.text("Invalid slug format (3-30 chars, alphanumeric, _ and - allowed)", 400);
-            }
-
-            const exists = await c.env.SHORTENER_KV.get("short:" + slug);
-            if (exists) {
-                return c.text("Slug already exists, please choose another", 409);
-            }
-
-            if (["manage", "qr", "go"].includes(slug.toLowerCase())) {
-                return c.text("Invalid slug, please choose another", 409);
-            }
-        }
-
-        if (!dest || !slug) {
-            return c.text("Destination and slug are required", 400);
-        }
-
-        const entry: ShortenedEntry = { slug, dest, expiry };
-        await c.env.SHORTENER_KV.put("short:" + slug, JSON.stringify(entry));
-        return c.json({ success: true, entry });
+    if (typeof dest !== "string") {
+      return c.text("Invalid destination URL", 400);
     }
 
-    if (action === "DELETE") {
-        const slug = (form.get("slug") || "").toString().trim();
-        if (!slug) {
-            return c.text("Slug is required", 400);
-        }
-
-        await c.env.SHORTENER_KV.delete("short:" + slug);
-        return c.json({ success: true });
+    if (!dest || !/^https?:\/\//.test(dest)) {
+      return c.text("Invalid destination URL", 400);
     }
+
+    if (expiry) {
+      const d = new Date(expiry);
+      if (isNaN(d.getTime())) {
+        return c.text("Invalid expiry date", 400);
+      }
+    }
+
+    if (!slug) {
+      let tries = 0;
+      do {
+        slug = genSlug(6);
+        const exists = await c.env.SHORTENER_KV.get("short:" + slug);
+        if (!exists) break;
+        tries++;
+      } while (tries < 5);
+      if (tries === 5) {
+        return c.text("Failed to generate unique slug, please try again", 500);
+      }
+    } else {
+      if (!/^[a-zA-Z0-9_-]{3,30}$/.test(slug)) {
+        return c.text("Invalid slug format (3-30 chars, alphanumeric, _ and - allowed)", 400);
+      }
+
+      const exists = await c.env.SHORTENER_KV.get("short:" + slug);
+      if (exists) {
+        return c.text("Slug already exists, please choose another", 409);
+      }
+
+      if (["manage", "qr", "go"].includes(slug.toLowerCase())) {
+        return c.text("Invalid slug, please choose another", 409);
+      }
+    }
+
+    if (!dest || !slug) {
+      return c.text("Destination and slug are required", 400);
+    }
+
+    const entry: ShortenedEntry = { slug, dest, expiry };
+    await c.env.SHORTENER_KV.put("short:" + slug, JSON.stringify(entry));
+    return c.json({ success: true, entry });
+  }
+
+  if (action === "DELETE") {
+    const slug = (form.get("slug") || "").toString().trim();
+    if (!slug) {
+      return c.text("Slug is required", 400);
+    }
+
+    await c.env.SHORTENER_KV.delete("short:" + slug);
+    return c.json({ success: true });
+  }
 });
 
 function genSlug(len = 6) {
-    const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
-    let out = ''
-    for (let i = 0; i < len; i++) out += chars[Math.floor(Math.random() * chars.length)]
-    return out
+  const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+  let out = ''
+  for (let i = 0; i < len; i++) out += chars[Math.floor(Math.random() * chars.length)]
+  return out
 }
