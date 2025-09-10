@@ -171,9 +171,9 @@ router.get("/", (c) => {
               <td style="padding:10px;vertical-align:top">\${expiry}</td>
               <td style="padding:10px;vertical-align:top">
                 <div style="display:flex;gap:6px;flex-direction:column">
-                  <a class="ghost" href="/qr/\${encodeURIComponent(item.slug || '')}" target="_blank">QR</a>
-                  <form method="post" action="/manage/delete" style="display:inline" onsubmit="return confirm('Delete ' + '\${escapeHtml(item.slug || '')} + '?')">
+                  <form method="post" action="/manage" style="display:inline">
                     <input type="hidden" name="slug" value="\${escapeHtml(item.slug || '')}">
+                    <input type="hidden" name="action" value="DELETE">
                     <input type="hidden" name="token" value="\${escapeHtml(tokenInput.value.trim())}">
                     <button class="ghost" type="submit" style="width:100%">Delete</button>
                   </form>
