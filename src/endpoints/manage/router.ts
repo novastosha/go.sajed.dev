@@ -7,7 +7,7 @@ export const router = fromHono(new Hono());
 
 router.get("/", (c) => {
   return c.html(htmlTemplate('Manage links — go.sajed.dev', `
-  <div style="display:flex;flex-direction:column;gap:14px">
+ <div style="display:flex;flex-direction:column;gap:14px">
     <!-- Manager token (required for all operations) -->
     <div style="display:flex;gap:12px;align-items:center;">
       <label style="font-size:13px;color:var(--muted);min-width:140px">Manager token (required)</label>
@@ -45,12 +45,12 @@ router.get("/", (c) => {
         </div>
       </div>
 
-      <!-- RIGHT: Add new short link -->
+      <!-- RIGHT: Add new short link (converted to a DIV, not a FORM) -->
       <div class="card" style="width:420px;min-width:320px;flex-shrink:0">
         <h3 style="margin-top:0">Create short link</h3>
         <p class="muted" style="margin:6px 0 12px 0">Add a destination, a slug and an optional expiry date.</p>
 
-        <form id="addForm">
+        <div id="addForm">
           <label>Destination URL</label>
           <input name="dest" id="addDest" type="url" placeholder="https://example.com/long/path" required />
 
@@ -65,10 +65,10 @@ router.get("/", (c) => {
             </div>
           </div>
 
-          <input type="hidden" name="action" value="ADD" />
+          <input type="hidden" id="addAction" value="ADD" />
 
           <div style="display:flex;gap:8px;align-items:center;margin-top:12px">
-            <button id="addBtn" type="submit" class="success">Create</button>
+            <button id="addBtn" type="button" class="success">Create</button>
             <button id="randomAddSlug" type="button" class="ghost">Random slug</button>
             <div id="addStatus" style="margin-left:8px;font-weight:600"></div>
           </div>
@@ -84,7 +84,7 @@ router.get("/", (c) => {
               </div>
             </div>
           </div>
-        </form>
+        </div>
       </div>
     </div>
   </div>
