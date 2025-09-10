@@ -1,52 +1,150 @@
 export function escapeHtml(s: string) {
-    return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' } as any)[c])
+  return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' } as any)[c])
 }
 
 export function htmlTemplate(title: string, bodyHtml: string) {
-    return `<!doctype html>
+  return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>${escapeHtml(title)}</title>
-<style>
-  :root{
-    --bg:#0f1724;
-    --card:#0b1220;
-    --muted:#9aa4b2;
-    --accent:#60a5fa;
-    --accent-2:#7dd3fc;
-    --success:#22c55e;
-    --danger:#ef4444;
-    --glass: rgba(255,255,255,0.03);
-  }
-  html,body{height:100%;margin:0;font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial;}
-  body{background:linear-gradient(180deg,var(--bg) 0%, #071024 100%);color:#e6eef8;display:flex;align-items:flex-start;justify-content:center;padding:36px;}
-  .container{max-width:920px;width:100%;}
-  header{display:flex;align-items:center;gap:12px;margin-bottom:18px}
-  header h1{font-size:18px;margin:0;font-weight:600}
-  .card{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));border-radius:12px;padding:18px;box-shadow:0 6px 18px rgba(2,6,23,0.6);border:1px solid rgba(255,255,255,0.03)}
-  label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px}
-  input[type="text"], input[type="url"], input[type="date"], select, textarea{
-    width:100%;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit;font-size:14px;
-    box-sizing:border-box;
-  }
-  .row{display:flex;gap:12px}
-  .col{flex:1}
-  .actions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
-  button{background:linear-gradient(90deg,var(--accent),var(--accent-2));border:none;padding:10px 14px;border-radius:8px;color:#04253b;font-weight:600;cursor:pointer}
-  button.ghost{background:transparent;border:1px solid rgba(255,255,255,0.04);color:var(--muted)}
-  table{width:100%;border-collapse:collapse;margin-top:12px;font-size:14px}
-  th,td{padding:10px;border-bottom:1px dashed rgba(255,255,255,0.03);text-align:left}
-  .muted{color:var(--muted);font-size:13px}
-  a.small{font-size:13px;color:var(--accent);text-decoration:none}
-  .qr{width:90px;height:90px;border-radius:6px;background:var(--glass);display:inline-flex;align-items:center;justify-content:center;padding:8px}
-  .danger{background:linear-gradient(90deg,#f87171,#ef4444);color:#fff;border:none;padding:8px;border-radius:8px}
-  .success{background:linear-gradient(90deg,#34d399,#10b981);color:#04253b;padding:8px;border-radius:8px;border:none}
-  footer{margin-top:16px;color:var(--muted);font-size:13px}
-  pre.small{font-size:12px;white-space:pre-wrap;word-break:break-all;background:rgba(255,255,255,0.02);padding:8px;border-radius:6px}
-  @media (max-width:640px){.row{flex-direction:column}}
-</style>
+  <link rel="stylesheet" href="https://cdn.sajed.dev/web/assets/input-compatible-styles.css">
+
+  <style>
+    :root {
+      --bg: #0b0b0b;
+      --panel: #0f0f0f;
+      --border: #2b2b2b;
+      --muted: #888;
+      --accent: #7cc;
+      --success: #7c7;
+      --danger: #f55;
+      font-family: monospace;
+    }
+
+    html, body { height: 100%; }
+    body {
+      background: var(--bg);
+      color: #ddd;
+      margin: 0;
+      padding: 1rem;
+      /* content flows top -> down; container centered horizontally */
+    }
+
+    /* Horizontal center only: container with auto horizontal margins */
+    .container {
+      width: 100%;
+      max-width: 980px;
+      margin: 2rem auto; /* centers horizontally and keeps top spacing */
+    }
+
+    #navbar {
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      padding: 0.5rem 1rem;
+      border-bottom:1px solid var(--border);
+      background: linear-gradient(180deg, rgba(255,255,255,0.02), transparent);
+      border-radius: 6px 6px 0 0;
+    }
+    h1 { margin:0; font-size:1.1rem; }
+    #navbar-links a { color: #ddd; text-decoration:none; margin-left:0.75rem; }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      padding: 1rem;
+      margin-top: 1rem;
+      border-radius: 6px;
+    }
+
+    .panel, #navbar { width: 100%; box-sizing: border-box; }
+
+    label { display:inline-block; width:60px; }
+    input[type="text"], input[type="url"], textarea, select {
+      background: black;
+      color: white;
+      border: 1px solid #444;
+      padding: 4px 6px;
+      font-family: monospace;
+      width: 320px;
+    }
+    textarea { height: 4.5rem; width: 100%; max-width: 640px; }
+
+    .controls {
+      display:flex;
+      gap: 0.5rem;
+      align-items:center;
+      margin-top: 0.5rem;
+      flex-wrap:wrap;
+    }
+
+    button, .link-btn {
+      padding: 6px 10px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: #ddd;
+      cursor: pointer;
+      font-family: monospace;
+    }
+    button.primary { border-color: var(--accent); }
+    button.danger { border-color: var(--danger); color: var(--danger); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    #list {
+      margin-top: 1rem;
+      border-collapse: collapse;
+      width: 100%;
+      font-size: 0.95rem;
+    }
+
+    table#list th, table#list td {
+      padding: 8px;
+      border-bottom: 1px solid #1b1b1b;
+      vertical-align: top;
+      text-align: left;
+    }
+
+    table#list th { color: var(--muted); font-weight: normal; font-size: 0.85rem; }
+    .entry-message { white-space: pre-wrap; max-width: 60ch; color: #ddd; }
+
+    .checkbox {
+      width:18px;
+      height:18px;
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+
+    .meta {
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+
+    #feedback {
+      margin-top: 0.75rem;
+      font-weight: bold;
+    }
+    #feedback.success { color: var(--success); }
+    #feedback.error { color: var(--danger); }
+
+    .small { font-size:0.85rem; color:var(--muted); }
+
+    /* Approved badges */
+    .badge-yes { color: var(--success); font-weight: 700; }
+    .badge-no  { color: var(--danger); font-weight: 700; }
+
+    @media (max-width: 720px) {
+      body { padding: 0.5rem; }
+      .container { max-width: 100%; margin: 1rem auto; }
+      label { display:block; width:100%; margin-bottom:0.25rem; }
+      input[type="text"], select { width: 100%; }
+      textarea { width: 100%; }
+      .panel { padding: 0.75rem; }
+      #navbar { padding: 0.5rem; }
+    }
+  </style>
 </head>
 <body>
 <div class="container">

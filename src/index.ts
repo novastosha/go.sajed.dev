@@ -4,9 +4,6 @@ import { type Env } from './types'
 
 const app = new Hono<{ Bindings: Env }>()
 
-
-const BASE_REDIRECT = "https://sajed.dev/redirect?"
-
 function extractSlug(req: Request): string | null {
   try {
     const url = new URL(req.url)

@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { fromHono } from "chanfana";
 import { htmlTemplate } from "../../utils/html";
+import { sl } from "zod/v4/locales";
 
 export const router = fromHono(new Hono());
 
@@ -13,14 +14,13 @@ router.get("/", (c) => {
       <input id="managerToken" type="password" placeholder="Enter manager token" 
              style="flex:1;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit" />
       <button id="tokenApply" class="ghost" style="padding:9px 12px;border-radius:8px">Apply</button>
-      <div id="tokenState" class="muted" style="min-width:220px;text-align:right">Token required for operations</div>
+      <div id="tokenState" class="muted" style="min-width:220px;text-align:right">Input the token.</div>
     </div>
 
     <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
-      <!-- LEFT: Full listing (QUERY) - displays all short links from KV -->
       <div class="card" style="flex:1;min-width:520px">
         <h3 style="margin-top:0">All short links</h3>
-        <p class="muted" style="margin:6px 0 12px 0">This queries the KV and lists all stored short links with destination, name and expiry (if available).</p>
+        <p class="muted" style="margin:6px 0 12px 0">Gets the list of all shortened links</p>
 
         <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px">
           <button id="queryBtn" class="ghost">Refresh list</button>
@@ -33,7 +33,6 @@ router.get("/", (c) => {
             <thead>
               <tr style="text-align:left">
                 <th style="padding:10px;border-bottom:1px dashed rgba(255,255,255,0.03)">Slug</th>
-                <th style="padding:10px;border-bottom:1px dashed rgba(255,255,255,0.03)">Name</th>
                 <th style="padding:10px;border-bottom:1px dashed rgba(255,255,255,0.03)">Destination</th>
                 <th style="padding:10px;border-bottom:1px dashed rgba(255,255,255,0.03)">Expiry</th>
                 <th style="padding:10px;border-bottom:1px dashed rgba(255,255,255,0.03)">Actions</th>
@@ -49,7 +48,7 @@ router.get("/", (c) => {
       <!-- RIGHT: Add new short link -->
       <div class="card" style="width:420px;min-width:320px;flex-shrink:0">
         <h3 style="margin-top:0">Create short link</h3>
-        <p class="muted" style="margin:6px 0 12px 0">Add a destination, optional slug and expiry. The Manager token will be sent automatically.</p>
+        <p class="muted" style="margin:6px 0 12px 0">Add a destination, a slug and an optional expiry date.</p>
 
         <form id="addForm">
           <label>Destination URL</label>
@@ -57,8 +56,8 @@ router.get("/", (c) => {
 
           <div class="row" style="display:flex;gap:8px;margin-top:8px">
             <div style="flex:1">
-              <label>Slug (optional)</label>
-              <input name="slug" id="addSlug" type="text" placeholder="abc123" />
+              <label>Slug</label>
+              <input name="slug" id="addSlug" type="text" placeholder="abc123" required />
             </div>
             <div style="width:150px">
               <label>Expiry (optional)</label>
@@ -82,10 +81,6 @@ router.get("/", (c) => {
                   <div class="muted" style="font-size:12px">Short URL</div>
                   <a id="previewShort" class="small" href="#" target="_blank" rel="noreferrer">https://go.sajed.dev/…</a>
                 </div>
-              </div>
-              <div style="flex:1">
-                <div class="muted" style="font-size:12px">Destination (preview)</div>
-                <div id="previewDest" class="small" style="margin-top:6px;background:rgba(255,255,255,0.02);padding:8px;border-radius:6px;min-height:36px;overflow:auto">—</div>
               </div>
             </div>
           </div>
@@ -148,7 +143,7 @@ router.get("/", (c) => {
         try { data = JSON.parse(text); }
         catch(e){ linksBody.innerHTML = '<tr><td colspan="5" style="padding:12px;">Unexpected response (not JSON)</td></tr>'; listState.textContent = 'Invalid response'; return; }
 
-        // expect data to be an array of {slug,dest,name?,expiry?}
+        // expect data to be an array of {slug,dest,expiry?}
         if (!Array.isArray(data.entries)) {
           linksBody.innerHTML = '<tr><td colspan="5" style="padding:12px;">Unexpected response format</td></tr>';
           listState.textContent = 'Invalid format';
@@ -165,7 +160,6 @@ router.get("/", (c) => {
         // build rows
         const rows = data.map(item => {
           const slug = escapeHtml(item.slug || '');
-          const name = escapeHtml(item.name || '');
           const dest = escapeHtml(item.dest || '');
           // expiry: show human-friendly or dash
           const expiry = item.expiry ? (new Date(item.expiry).toISOString().split('T')[0]) : '—';
@@ -173,7 +167,6 @@ router.get("/", (c) => {
           return \`
             <tr>
               <td style="padding:10px;vertical-align:top"><strong>\${slug}</strong></td>
-              <td style="padding:10px;vertical-align:top">\${name || '<span class="muted">—</span>'}</td>
               <td style="padding:10px;vertical-align:top"><a class="small" href="\${shortUrl}" target="_blank" rel="noreferrer">\${shortUrl}</a><div style="margin-top:6px" class="muted"><pre class="small" style="margin:0;background:transparent;padding:0">\${dest}</pre></div></td>
               <td style="padding:10px;vertical-align:top">\${expiry}</td>
               <td style="padding:10px;vertical-align:top">
@@ -327,6 +320,18 @@ router.post("/", async (c) => {
         let slug = (form.get("slug") || "").toString().trim();
         const expiry = (form.get("expiry") || "").toString().trim();
 
+        if (typeof slug !== "string") {
+            return c.text("Invalid slug format", 400);
+        }
+
+        if (typeof dest !== "string") {
+            return c.text("Invalid destination URL", 400);
+        }
+
+        if (!dest || !/^https?:\/\//.test(dest)) {
+            return c.text("Invalid destination URL", 400);
+        }
+
         if (expiry) {
             const d = new Date(expiry);
             if (isNaN(d.getTime())) {
@@ -348,6 +353,15 @@ router.post("/", async (c) => {
         } else {
             if (!/^[a-zA-Z0-9_-]{3,30}$/.test(slug)) {
                 return c.text("Invalid slug format (3-30 chars, alphanumeric, _ and - allowed)", 400);
+            }
+
+            const exists = await c.env.SHORTENER_KV.get("short:" + slug);
+            if (exists) {
+                return c.text("Slug already exists, please choose another", 409);
+            }
+
+            if (["manage", "qr", "go"].includes(slug.toLowerCase())) {
+                return c.text("Invalid slug, please choose another", 409);
             }
         }
 
