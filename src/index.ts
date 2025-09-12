@@ -26,6 +26,7 @@ function extractSlug(req: Request): string | null {
 
 
 import { router, ShortenedEntry } from "./endpoints/manage/router";
+import { htmlTemplate } from './utils/html'
 app.route('/manage', router)
 
 app.get('*', async (c) => {
@@ -33,7 +34,7 @@ app.get('*', async (c) => {
   const slug = extractSlug(req)
 
   if (slug === null) {
-    return c.text('Not found', 404)
+    return c.redirect('https://sajed.dev', 302)
   }
 
   const url = new URL(req.url)
