@@ -1,5 +1,4 @@
 import { Hono } from 'hono'
-import { Context } from 'hono'
 import { type Env } from './types'
 
 const app = new Hono<{ Bindings: Env }>()
@@ -73,7 +72,9 @@ app.get('*', async (c) => {
   }
 
   let analytics = await getAnalytics(req, url, c.env, slug);
-  await c.env.SHORTENER_KV.put(`analytics:${slug}:${Date.now()}`, JSON.stringify(analytics), { expirationTtl: 60 * 60 * 24 * 90 }) // keep for 90 days
+  if (analytics.slug !== '') {
+    await c.env.SHORTENER_KV.put(`analytics:${slug}:${Date.now()}`, JSON.stringify(analytics), { expirationTtl: 60 * 60 * 24 * 90 }) // keep for 90 days
+  }
 
   if (entry.expiry) {
     const now = new Date()
@@ -100,23 +101,36 @@ app.get('*', async (c) => {
 type AnalyticDataRecord = {
   slug: string;
   time: string;
-  ip: string;
   origin: string;
-  referer: string;
   device: string;
   os: string;
   browser: string;
   source: string;
 };
 
+const EMPTY_RECORD: AnalyticDataRecord = {
+  slug: '',
+  time: '',
+  origin: '',
+  device: '',
+  os: '',
+  browser: '',
+  source: ''
+};
+
 async function getAnalytics(req: Request, url: URL, env: any, slug: string): Promise<AnalyticDataRecord> {
   const userAgent = req.headers.get('User-Agent') || ''
+
+  if (!userAgent.includes("Bot") && !userAgent.includes("bot") && !userAgent.includes("BOT")) {
+    return EMPTY_RECORD
+  }
 
   let apiRequest = await fetch(`https://api.ipgeolocation.io/v2/user-agent?apiKey=${env.IPGEO_API_KEY}`, {
     headers: {
       'User-Agent': userAgent
     }
   });
+
 
   let device = (() => {
     const ua = userAgent.toLowerCase()
@@ -133,7 +147,7 @@ async function getAnalytics(req: Request, url: URL, env: any, slug: string): Pro
     if (ua.includes('iphone') || ua.includes('ipad')) return 'iOS'
     return 'Unknown'
   })()
-  
+
   let browser = (() => {
     const ua = userAgent.toLowerCase()
     if (ua.includes('chrome') && !ua.includes('edg')) return 'Chrome'
@@ -144,28 +158,25 @@ async function getAnalytics(req: Request, url: URL, env: any, slug: string): Pro
     return 'Unknown'
   })()
 
-  let response: { device: {name: string; type: string; brand: string }; operating_system: {name: string; version_major: string; }; name: string; type: string; version_major: string } = await apiRequest.json()
+  let response: { device: { name: string; type: string; brand: string }; operating_system: { name: string; version_major: string; }; name: string; type: string; version_major: string } = await apiRequest.json()
   if (response && apiRequest.ok) {
-      if (response.device.type == response.device.name) {
-          device = response.device.type + (response.device.brand ? " " + response.device.brand : "")
-      }else{
-          device =  response.device.type + " " + response.device.name
-      }
-      browser = response.name + " " + response.type
-      os = response.operating_system.name + " " + response.operating_system.version_major
+    if (response.device.type == response.device.name) {
+      device = response.device.type + (response.device.brand ? " " + response.device.brand : "")
+    } else {
+      device = response.device.type + " " + response.device.name
+    }
+    browser = response.name + " " + response.type
+    os = response.operating_system.name + " " + response.operating_system.version_major
   }
 
   const origin = req.headers.get('Origin') || url.origin || url.hostname || 'unknown'
-  const ip = req.headers.get('CF-Connecting-IP') || req.headers.get('X-Forwarded-For') || 'Unknown IP'
   const time = new Date().toISOString()
   const utm_source = url.searchParams.get('utm_source') || 'No source'
 
   const record: AnalyticDataRecord = {
     slug,
     time,
-    ip,  
     origin,
-    referer: "-", // No Referer for now.
     device,
     os,
     browser,
