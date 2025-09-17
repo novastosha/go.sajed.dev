@@ -150,11 +150,11 @@ async function getAnalytics(req: Request, url: URL, env: any): Promise<AnalyticD
       os = response.operating_system.name + " " + response.operating_system.version_major
   }
 
-  const origin = req.headers.get('Origin') || 'unknown'
-  const referer = req.headers.get('Referer') || 'unknown'
-  const ip = req.headers.get('CF-Connecting-IP') || req.headers.get('X-Forwarded-For') || 'unknown'
+  const origin = req.headers.get('Origin') || url.origin || url.hostname || 'unknown'
+  const referer = req.headers.get('Referer') || 'No referer'
+  const ip = req.headers.get('CF-Connecting-IP') || req.headers.get('X-Forwarded-For') || 'Unknown IP'
   const time = new Date().toISOString()
-  const utm_source = url.searchParams.get('utm_source') || 'unknown'
+  const utm_source = url.searchParams.get('utm_source') || 'No source'
 
   const record: AnalyticDataRecord = {
     time,

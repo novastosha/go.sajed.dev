@@ -201,8 +201,11 @@ router.post("/analytics/:slug", async (c) => {
     return c.text("Slug is required", 400);
   }
 
+
   const form = await c.req.formData();
   const token = (form.get("token") || "").toString().trim();
+
+  const deleteEntry = (form.get("delete") || "").toString().trim().toLowerCase() === "true";
 
   if (!token) {
     return c.text("Manager token is required", 400);
@@ -210,6 +213,21 @@ router.post("/analytics/:slug", async (c) => {
 
   if (token !== c.env.TOKEN_SECRET) {
     return c.text("Invalid manager token", 403);
+  }
+
+  if (deleteEntry) {
+    let deletedCount = 0;
+    if (slug === "*") {
+      const list = await c.env.SHORTENER_KV.list({ prefix: `analytics:` });
+      deletedCount = list.keys.length;
+      await Promise.all(list.keys.map((k: { name: any; }) => c.env.SHORTENER_KV.delete(k.name)));
+    } else {
+      const list = await c.env.SHORTENER_KV.list({ prefix: `analytics:${slug}:` });
+      deletedCount = list.keys.length;
+      await Promise.all(list.keys.map((k: { name: any; }) => c.env.SHORTENER_KV.delete(k.name)));
+    }
+
+    return c.json({ success: true, deletedCount });
   }
 
   const entries: any[] = [];
@@ -232,7 +250,6 @@ router.post("/analytics/:slug", async (c) => {
 
   return c.json({ success: true, entries });
 });
-
 router.get("/analytics", async (c) => {
   return c.html(htmlTemplate('Analytics — go.sajed.dev', `
     <div style="display:flex;flex-direction:column;gap:14px">
@@ -252,6 +269,7 @@ router.get("/analytics", async (c) => {
                style="flex:1;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit" />
         <button id="fetchBtn" class="btn primary" style="padding:9px 12px;border-radius:8px">Fetch</button>
         <button id="csvBtn" class="ghost" style="padding:9px 12px;border-radius:8px">Export CSV</button>
+        <button id="deleteBtn" class="ghost" style="padding:9px 12px;border-radius:8px;background:linear-gradient(90deg,#ef4444,#f87171);color:white">Delete</button>
         <div id="count" class="muted" style="min-width:160px;text-align:right">0 entries</div>
       </div>
 
@@ -286,6 +304,11 @@ router.get("/analytics", async (c) => {
           <option value="">Source (all)</option>
         </select>
 
+        <!-- slug filter appears when viewing * -->
+        <select id="slugFilter" style="min-width:160px;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit;display:none">
+          <option value="">Slug (all)</option>
+        </select>
+
         <label style="margin-left:auto;display:flex;gap:8px;align-items:center" class="muted small">
           <input id="saveToken" type="checkbox" style="transform:translateY(1px)" /> Save token (local)
         </label>
@@ -303,14 +326,16 @@ router.get("/analytics", async (c) => {
         <table id="entriesTable" style="width:100%;border-collapse:collapse">
           <thead>
             <tr>
-              <th data-key="time" style="cursor:pointer;color:var(--muted)">Time ▾</th>
-              <th data-key="ip" style="cursor:pointer;color:var(--muted)">IP</th>
-              <th data-key="origin" style="cursor:pointer;color:var(--muted)">Origin</th>
-              <th data-key="referer" style="cursor:pointer;color:var(--muted)">Referer</th>
-              <th data-key="device" style="cursor:pointer;color:var(--muted)">Device</th>
-              <th data-key="os" style="cursor:pointer;color:var(--muted)">OS</th>
-              <th data-key="browser" style="cursor:pointer;color:var(--muted)">Browser</th>
-              <th data-key="source" style="cursor:pointer;color:var(--muted)">Source</th>
+              <th data-key="time" data-label="Time" style="cursor:pointer;color:var(--muted)">Time ▾</th>
+              <th data-key="ip" data-label="IP" style="cursor:pointer;color:var(--muted)">IP</th>
+              <th data-key="origin" data-label="Origin" style="cursor:pointer;color:var(--muted)">Origin</th>
+              <!-- slug column: visible only when slug='*' or when entries include slug -->
+              <th data-key="slug" data-label="Slug" style="cursor:pointer;color:var(--muted);display:none">Slug</th>
+              <th data-key="referer" data-label="Referer" style="cursor:pointer;color:var(--muted)">Referer</th>
+              <th data-key="device" data-label="Device" style="cursor:pointer;color:var(--muted)">Device</th>
+              <th data-key="os" data-label="OS" style="cursor:pointer;color:var(--muted)">OS</th>
+              <th data-key="browser" data-label="Browser" style="cursor:pointer;color:var(--muted)">Browser</th>
+              <th data-key="source" data-label="Source" style="cursor:pointer;color:var(--muted)">Source</th>
             </tr>
           </thead>
           <tbody></tbody>
@@ -333,9 +358,12 @@ router.get("/analytics", async (c) => {
       </div>
 
       <script>
-        /* Minimal client-side app for fetching + filtering analytics entries.
-           - Expects POST /analytics/:slug returning { success: true, entries: AnalyticDataRecord[] }
-           - AnalyticDataRecord = { time, ip, origin, referer, device, os, browser, source }
+        /* Analytics frontend
+           - updated to support delete (server accepts delete=true)
+           - shows slug column when viewing '*' (or when entries include slug)
+           - capitalizes certain table values for nicer display
+           - removes seconds from displayed time (YYYY-MM-DD HH:MM)
+           - pressing Enter inside token input triggers Apply
         */
 
         const el = id => document.getElementById(id);
@@ -357,17 +385,33 @@ router.get("/analytics", async (c) => {
           el('tokenState').textContent = 'Token loaded from local storage.';
         }
 
-        // helpers
+        // helper: format time without seconds as YYYY-MM-DD HH:MM
         function formatTime(iso) {
           try {
             const d = new Date(iso);
             if (isNaN(d)) return iso;
-            return d.toLocaleString();
-          } catch (e) { return iso; }
+            const y = d.getFullYear();
+            const mo = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            const hh = String(d.getHours()).padStart(2, '0');
+            const mm = String(d.getMinutes()).padStart(2, '0');
+            return y + '-' + mo + '-' + day + ' ' + hh + ':' + mm;
+          } catch (e) {
+            return iso;
+          }
         }
 
         function uniq(arr) {
           return Array.from(new Set(arr.filter(Boolean)));
+        }
+
+        function capitalizeWords(s) {
+          if (!s) return s;
+          return String(s).split(/\\s+/).map(part => {
+            // keep dot-separated tokens (like en-US) as-is except first char
+            if (part.length === 0) return part;
+            return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
+          }).join(' ');
         }
 
         function setTokenFromInput(saveToLocal) {
@@ -384,6 +428,14 @@ router.get("/analytics", async (c) => {
           }
           return true;
         }
+
+        // Enter in token field triggers apply
+        el('managerToken').addEventListener('keydown', function (e) {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            el('tokenApply').click();
+          }
+        });
 
         el('tokenApply').addEventListener('click', function () {
           const save = el('saveToken').checked;
@@ -437,18 +489,23 @@ router.get("/analytics", async (c) => {
               return;
             }
 
-            allEntries = json.entries.map(e => normalizeRecord(e)).sort((a,b)=> new Date(b.time) - new Date(a.time));
+            // Normalize and default fields
+            allEntries = json.entries.map(e => normalizeRecord(e));
+
+            // If server didn't include slug but we fetched '*' we can't show per-entry slug.
+            // We still attempt to show slug column if entries contain 'slug'.
             page = 1;
             el('tokenState').textContent = 'Fetched ' + allEntries.length + ' entries.';
             populateFilterOptions();
             applyFilters();
+            toggleSlugColumn();
           } catch (err) {
             console.error(err);
             el('tokenState').textContent = 'Fetch failed.';
           }
         }
 
-        // normalize record shape (defensive)
+        // normalize record shape (defensive). Accepts records that may already contain slug.
         function normalizeRecord(r) {
           return {
             time: r.time || r.t || '',
@@ -459,7 +516,17 @@ router.get("/analytics", async (c) => {
             os: r.os || '',
             browser: r.browser || '',
             source: r.source || '',
+            slug: r.slug || r.s || '' // optional
           };
+        }
+
+        function toggleSlugColumn() {
+          // show slug column if user requested '*' or if any entry has a slug value
+          const shouldShow = (el('slugInput').value.trim() === '*') || allEntries.some(e => e.slug);
+          const th = document.querySelector('th[data-key=\"slug\"]');
+          if (th) th.style.display = shouldShow ? '' : 'none';
+          // also show/hide slugFilter
+          el('slugFilter').style.display = shouldShow ? '' : 'none';
         }
 
         // populate drop-down options based on currently fetched data
@@ -468,11 +535,23 @@ router.get("/analytics", async (c) => {
           const oss = uniq(allEntries.map(e=>e.os)).sort();
           const browsers = uniq(allEntries.map(e=>e.browser)).sort();
           const sources = uniq(allEntries.map(e=>e.source)).sort();
+          const slugs = uniq(allEntries.map(e=>e.slug)).sort().filter(Boolean);
 
           fillSelect(el('deviceFilter'), devices);
           fillSelect(el('osFilter'), oss);
           fillSelect(el('browserFilter'), browsers);
           fillSelect(el('sourceFilter'), sources);
+
+          // slug select (if applicable)
+          const slugSel = el('slugFilter');
+          const first = slugSel.options[0]?.outerHTML || '';
+          slugSel.innerHTML = first;
+          for (const v of slugs) {
+            const opt = document.createElement('option');
+            opt.value = v;
+            opt.text = v;
+            slugSel.appendChild(opt);
+          }
         }
 
         function fillSelect(selectEl, values) {
@@ -496,6 +575,7 @@ router.get("/analytics", async (c) => {
           const osVal = el('osFilter').value;
           const browser = el('browserFilter').value;
           const source = el('sourceFilter').value;
+          const slugFilter = el('slugFilter').value;
 
           filtered = allEntries.filter(rec => {
             if (from) {
@@ -510,9 +590,12 @@ router.get("/analytics", async (c) => {
             if (osVal && rec.os !== osVal) return false;
             if (browser && rec.browser !== browser) return false;
             if (source && rec.source !== source) return false;
+            if (slugFilter && rec.slug !== slugFilter) return false;
 
             if (text) {
-              const hay = (rec.origin + ' ' + rec.referer + ' ' + rec.ip + ' ' + rec.browser + ' ' + rec.os + ' ' + rec.device + ' ' + rec.source).toLowerCase();
+              const hay = ((rec.origin || '') + ' ' + (rec.referer || '') + ' ' + (rec.ip || '') + ' ' +
+                           (rec.browser || '') + ' ' + (rec.os || '') + ' ' + (rec.device || '') + ' ' +
+                           (rec.source || '') + ' ' + (rec.slug || '')).toLowerCase();
               if (!hay.includes(text)) return false;
             }
             return true;
@@ -532,9 +615,11 @@ router.get("/analytics", async (c) => {
               bv = new Date(bv);
               return (av - bv) * sortDir;
             }
-            // string compare
-            if ((av || '') < (bv || '')) return -1 * sortDir;
-            if ((av || '') > (bv || '')) return 1 * sortDir;
+            // treat undefined as empty string
+            av = (av || '').toString().toLowerCase();
+            bv = (bv || '').toString().toLowerCase();
+            if (av < bv) return -1 * sortDir;
+            if (av > bv) return 1 * sortDir;
             return 0;
           });
         }
@@ -569,24 +654,30 @@ router.get("/analytics", async (c) => {
             tOrigin.innerHTML = rec.origin ? '<code style=\"font-family:inherit;white-space:nowrap\">' + escapeHtml(rec.origin) + '</code>' : '-';
             tr.appendChild(tOrigin);
 
+            // slug column (may be hidden)
+            const tSlug = document.createElement('td');
+            tSlug.textContent = rec.slug ? capitalizeWords(rec.slug) : '-';
+            tSlug.style.display = document.querySelector('th[data-key=\"slug\"]').style.display === 'none' ? 'none' : '';
+            tr.appendChild(tSlug);
+
             const tReferer = document.createElement('td');
             tReferer.innerHTML = rec.referer ? escapeHtml(rec.referer) : '-';
             tr.appendChild(tReferer);
 
             const tDevice = document.createElement('td');
-            tDevice.textContent = rec.device || '-';
+            tDevice.textContent = rec.device ? capitalizeWords(rec.device) : '-';
             tr.appendChild(tDevice);
 
             const tOs = document.createElement('td');
-            tOs.textContent = rec.os || '-';
+            tOs.textContent = rec.os ? capitalizeWords(rec.os) : '-';
             tr.appendChild(tOs);
 
             const tBrowser = document.createElement('td');
-            tBrowser.textContent = rec.browser || '-';
+            tBrowser.textContent = rec.browser ? capitalizeWords(rec.browser) : '-';
             tr.appendChild(tBrowser);
 
             const tSource = document.createElement('td');
-            tSource.textContent = rec.source || '-';
+            tSource.textContent = rec.source ? capitalizeWords(rec.source) : '-';
             tr.appendChild(tSource);
 
             tbody.appendChild(tr);
@@ -613,21 +704,29 @@ router.get("/analytics", async (c) => {
           if (times.length) {
             const min = new Date(Math.min.apply(null, times));
             const max = new Date(Math.max.apply(null, times));
-            el('timeRange').textContent = min.toLocaleString() + ' — ' + max.toLocaleString();
+            el('timeRange').textContent = formatTime(min.toISOString()) + ' — ' + formatTime(max.toISOString());
           } else {
             el('timeRange').textContent = '—';
           }
         }
 
-        // CSV export of currently filtered view
+        // CSV export of currently filtered view (includes slug column if present)
         function exportCSV() {
           if (!filtered.length) {
             alert('No entries to export.');
             return;
           }
-          const rows = [['time','ip','origin','referer','device','os','browser','source']];
+          // header
+          const showSlug = document.querySelector('th[data-key=\"slug\"]').style.display !== 'none';
+          const header = ['time','ip','origin'];
+          if (showSlug) header.push('slug');
+          header.push('referer','device','os','browser','source');
+          const rows = [header];
           for (const r of filtered) {
-            rows.push([r.time, r.ip, r.origin, r.referer, r.device, r.os, r.browser, r.source].map(csvSafe));
+            const row = [r.time, r.ip, r.origin];
+            if (showSlug) row.push(r.slug || '');
+            row.push(r.referer || '', r.device || '', r.os || '', r.browser || '', r.source || '');
+            rows.push(row.map(csvSafe));
           }
           const csv = rows.map(r => r.join(',')).join('\\n');
           const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -639,6 +738,56 @@ router.get("/analytics", async (c) => {
           a.click();
           a.remove();
           URL.revokeObjectURL(url);
+        }
+
+        // delete (server supports delete=true and returns deletedCount)
+        async function deleteEntries() {
+          const slug = el('slugInput').value.trim();
+          if (!slug) { el('tokenState').textContent = 'Slug is required.'; return; }
+          if (!token) {
+            const applied = setTokenFromInput(false);
+            if (!applied) return;
+          }
+
+          // confirm
+          const isAll = slug === '*';
+          const confirmMsg = isAll ? 'Delete ALL analytics entries? This cannot be undone.' : 'Delete all analytics entries for slug \"' + slug + '\"? This cannot be undone.';
+          if (!confirm(confirmMsg)) return;
+
+          el('tokenState').textContent = 'Deleting...';
+          try {
+            const fd = new FormData();
+            fd.append('token', token);
+            fd.append('delete', 'true');
+
+            const res = await fetch('/analytics/' + encodeURIComponent(slug), {
+              method: 'POST',
+              body: fd
+            });
+
+            if (!res.ok) {
+              const text = await res.text();
+              el('tokenState').textContent = 'Error: ' + text;
+              return;
+            }
+
+            const json = await res.json();
+            if (!json || !json.success) {
+              el('tokenState').textContent = 'Unexpected server response.';
+              return;
+            }
+
+            el('tokenState').textContent = 'Deleted ' + (json.deletedCount || 0) + ' entries.';
+            // clear local data and UI
+            allEntries = [];
+            filtered = [];
+            populateFilterOptions();
+            applyFilters();
+            toggleSlugColumn();
+          } catch (err) {
+            console.error(err);
+            el('tokenState').textContent = 'Delete failed.';
+          }
         }
 
         // helpers for escaping / csv
@@ -658,15 +807,21 @@ router.get("/analytics", async (c) => {
           return '\"' + str + '\"';
         }
 
-        // simple column sort attachments
+        // simple column sort attachments (uses data-label for display)
         document.querySelectorAll('#entriesTable thead th[data-key]').forEach(th => {
           th.addEventListener('click', function () {
             const k = this.getAttribute('data-key');
             if (sortKey === k) sortDir = -sortDir;
             else { sortKey = k; sortDir = (k === 'time') ? -1 : 1; }
-            // update header arrow
+            // update header arrow using data-label
             document.querySelectorAll('#entriesTable thead th[data-key]').forEach(h => {
-              h.textContent = h.getAttribute('data-key') === sortKey ? (h.getAttribute('data-key') + (sortDir === -1 ? ' ▾' : ' ▴')) : h.getAttribute('data-key');
+              const key = h.getAttribute('data-key');
+              const label = h.getAttribute('data-label') || key;
+              if (key === sortKey) {
+                h.textContent = label + (sortDir === -1 ? ' ▾' : ' ▴');
+              } else {
+                h.textContent = label;
+              }
             });
             sortFiltered();
             renderTable();
@@ -687,23 +842,26 @@ router.get("/analytics", async (c) => {
         });
 
         // filter inputs
-        ['textSearch','fromDate','toDate','deviceFilter','osFilter','browserFilter','sourceFilter'].forEach(id => {
+        ['textSearch','fromDate','toDate','deviceFilter','osFilter','browserFilter','sourceFilter','slugFilter'].forEach(id => {
           el(id).addEventListener('input', function () {
             page = 1;
             applyFilters();
           });
         });
 
-        // fetch / export buttons
+        // fetch / export / delete buttons
         el('fetchBtn').addEventListener('click', fetchEntries);
         el('csvBtn').addEventListener('click', exportCSV);
+        el('deleteBtn').addEventListener('click', deleteEntries);
 
         // initial render
         renderTable();
+        toggleSlugColumn();
       </script>
     </div>
   `));
 });
+
 
 
 function genSlug(len = 4) {
