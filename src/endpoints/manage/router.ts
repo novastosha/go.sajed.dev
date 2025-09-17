@@ -760,7 +760,7 @@ router.get("/analytics", async (c) => {
             fd.append('token', token);
             fd.append('delete', 'true');
 
-            const res = await fetch('/analytics/' + encodeURIComponent(slug), {
+            const res = await fetch('/manage/analytics/' + encodeURIComponent(slug), {
               method: 'POST',
               body: fd
             });
