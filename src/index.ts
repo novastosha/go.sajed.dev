@@ -26,15 +26,15 @@ function extractSlug(req: Request): string | null {
 
 
 import { router, ShortenedEntry } from "./endpoints/manage/router";
-import { htmlTemplate } from './utils/html'
+import { RedirectStatusCode } from 'hono/utils/http-status'
 app.route('/manage', router)
 
 app.get('*', async (c) => {
   const req = c.req.raw
   const slug = extractSlug(req)
 
-  if (slug === null) {
-    return c.redirect('https://sajed.dev', 302)
+  if (slug === null || slug.length === 0) {
+    return c.redirect('https://sajed.dev', 301)
   }
 
   const url = new URL(req.url)
@@ -57,13 +57,17 @@ app.get('*', async (c) => {
       // remove form kv
       await c.env.SHORTENER_KV.delete("short:" + slug)
 
-      return c.text('Link expired', 410)
+      return c.redirect('https://sajed.dev/404', 302)
     }
   }
 
   // Redirect to destination
   let final = entry.dest + qs
-  return c.redirect(final, 301)
+  let code_int: RedirectStatusCode = 302; // 301 
+  //if (entry.expiry){
+  //  code_int = 302;
+  //}
+  return c.redirect(final, code_int)
 })
 
 export default {
