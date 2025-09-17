@@ -72,7 +72,7 @@ app.get('*', async (c) => {
     return c.text('Not found', 404)
   }
 
-  let analytics = await getAnalytics(req, url, c.env);
+  let analytics = await getAnalytics(req, url, c.env, slug);
   await c.env.SHORTENER_KV.put(`analytics:${slug}:${Date.now()}`, JSON.stringify(analytics), { expirationTtl: 60 * 60 * 24 * 90 }) // keep for 90 days
 
   if (entry.expiry) {
@@ -98,6 +98,7 @@ app.get('*', async (c) => {
 })
 
 type AnalyticDataRecord = {
+  slug: string;
   time: string;
   ip: string;
   origin: string;
@@ -108,7 +109,7 @@ type AnalyticDataRecord = {
   source: string;
 };
 
-async function getAnalytics(req: Request, url: URL, env: any): Promise<AnalyticDataRecord> {
+async function getAnalytics(req: Request, url: URL, env: any, slug: string): Promise<AnalyticDataRecord> {
   const userAgent = req.headers.get('User-Agent') || ''
 
   let apiRequest = await fetch(`https://api.ipgeolocation.io/v2/user-agent?apiKey=${env.IPGEO_API_KEY}`, {
@@ -143,24 +144,28 @@ async function getAnalytics(req: Request, url: URL, env: any): Promise<AnalyticD
     return 'Unknown'
   })()
 
-  let response: { device: {name: string; type: string; }; operating_system: {name: string; version_major: string; }; name: string; type: string; version_major: string } = await apiRequest.json()
+  let response: { device: {name: string; type: string; brand: string }; operating_system: {name: string; version_major: string; }; name: string; type: string; version_major: string } = await apiRequest.json()
   if (response && apiRequest.ok) {
-      device =  response.device.type + " " + response.device.name
-      browser = response.name + " " + response.type + " " + response.version_major
+      if (response.device.type == response.device.name) {
+          device = response.device.type + (response.device.brand ? " " + response.device.brand : "")
+      }else{
+          device =  response.device.type + " " + response.device.name
+      }
+      browser = response.name + " " + response.type
       os = response.operating_system.name + " " + response.operating_system.version_major
   }
 
   const origin = req.headers.get('Origin') || url.origin || url.hostname || 'unknown'
-  const referer = req.headers.get('Referer') || 'No referer'
   const ip = req.headers.get('CF-Connecting-IP') || req.headers.get('X-Forwarded-For') || 'Unknown IP'
   const time = new Date().toISOString()
   const utm_source = url.searchParams.get('utm_source') || 'No source'
 
   const record: AnalyticDataRecord = {
+    slug,
     time,
     ip,  
     origin,
-    referer,
+    referer: "-", // No Referer for now.
     device,
     os,
     browser,
