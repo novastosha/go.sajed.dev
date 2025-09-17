@@ -29,6 +29,27 @@ import { router, ShortenedEntry } from "./endpoints/manage/router";
 import { RedirectStatusCode } from 'hono/utils/http-status'
 app.route('/manage', router)
 
+app.get("/qr/:slug", async (c) => {
+  const slug = c.req.param("slug");
+  if (!slug) {
+    return c.text("Slug is required", 400);
+  }
+
+  const entryRaw = await c.env.SHORTENER_KV.get("short:" + slug);
+  if (!entryRaw) {
+    return c.text("Slug not found", 404);
+  }
+
+  const entry: ShortenedEntry = JSON.parse(entryRaw);
+  const shortUrl = `https://go.sajed.dev/${entry.slug}?utm_source=qr`;
+
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=600x600&data=${encodeURIComponent(shortUrl)}`;
+  const resp = await fetch(qrUrl);
+  const blob = await resp.blob();
+  const arrayBuffer = await blob.arrayBuffer();
+  return c.body(new Uint8Array(arrayBuffer), 200, { "Content-Type": "image/png" });
+});
+
 app.get('*', async (c) => {
   const req = c.req.raw
   const slug = extractSlug(req)
@@ -50,12 +71,18 @@ app.get('*', async (c) => {
   if (!entry || !entry.dest) {
     return c.text('Not found', 404)
   }
+
+  let analytics = await getAnalytics(req, url, c.env);
+  await c.env.SHORTENER_KV.put(`analytics:${slug}:${Date.now()}`, JSON.stringify(analytics), { expirationTtl: 60 * 60 * 24 * 90 }) // keep for 90 days
+
   if (entry.expiry) {
     const now = new Date()
     const exp = new Date(entry.expiry)
     if (exp < now) {
-      // remove form kv
       await c.env.SHORTENER_KV.delete("short:" + slug)
+
+      const list = await c.env.SHORTENER_KV.list({ prefix: `analytics:${slug}:` })
+      await Promise.all(list.keys.map(k => c.env.SHORTENER_KV.delete(k.name)))
 
       return c.redirect('https://sajed.dev/404', 302)
     }
@@ -69,6 +96,79 @@ app.get('*', async (c) => {
   //}
   return c.redirect(final, code_int)
 })
+
+type AnalyticDataRecord = {
+  time: string;
+  ip: string;
+  origin: string;
+  referer: string;
+  device: string;
+  os: string;
+  browser: string;
+  source: string;
+};
+
+async function getAnalytics(req: Request, url: URL, env: any): Promise<AnalyticDataRecord> {
+  const userAgent = req.headers.get('User-Agent') || ''
+
+  let apiRequest = await fetch(`https://api.ipgeolocation.io/v2/user-agent?apiKey=${env.IPGEO_API_KEY}`, {
+    headers: {
+      'User-Agent': userAgent
+    }
+  });
+
+  let device = (() => {
+    const ua = userAgent.toLowerCase()
+    if (ua.includes('mobile')) return 'Mobile'
+    if (ua.includes('tablet')) return 'Tablet'
+    return 'Desktop'
+  })()
+  let os = (() => {
+    const ua = userAgent.toLowerCase()
+    if (ua.includes('windows')) return 'Windows'
+    if (ua.includes('macintosh') || ua.includes('mac os x')) return 'MacOS'
+    if (ua.includes('linux')) return 'Linux'
+    if (ua.includes('android')) return 'Android'
+    if (ua.includes('iphone') || ua.includes('ipad')) return 'iOS'
+    return 'Unknown'
+  })()
+  
+  let browser = (() => {
+    const ua = userAgent.toLowerCase()
+    if (ua.includes('chrome') && !ua.includes('edg')) return 'Chrome'
+    if (ua.includes('safari') && !ua.includes('chrome')) return 'Safari'
+    if (ua.includes('firefox')) return 'Firefox'
+    if (ua.includes('edg')) return 'Edge'
+    if (ua.includes('opera') || ua.includes('opr')) return 'Opera'
+    return 'Unknown'
+  })()
+
+  let response: { device: {name: string; type: string; }; operating_system: {name: string; version_major: string; }; name: string; type: string; version_major: string } = await apiRequest.json()
+  if (response && apiRequest.ok) {
+      device =  response.device.type + " " + response.device.name
+      browser = response.name + " " + response.type + " " + response.version_major
+      os = response.operating_system.name + " " + response.operating_system.version_major
+  }
+
+  const origin = req.headers.get('Origin') || 'unknown'
+  const referer = req.headers.get('Referer') || 'unknown'
+  const ip = req.headers.get('CF-Connecting-IP') || req.headers.get('X-Forwarded-For') || 'unknown'
+  const time = new Date().toISOString()
+  const utm_source = url.searchParams.get('utm_source') || 'unknown'
+
+  const record: AnalyticDataRecord = {
+    time,
+    ip,  
+    origin,
+    referer,
+    device,
+    os,
+    browser,
+    source: utm_source
+  }
+  return record
+}
+
 
 export default {
   fetch: app.fetch,
