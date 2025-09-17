@@ -420,7 +420,7 @@ router.get("/analytics", async (c) => {
             const fd = new FormData();
             fd.append('token', token);
 
-            const res = await fetch('/analytics/' + encodeURIComponent(slug), {
+            const res = await fetch('/manage/analytics/' + encodeURIComponent(slug), {
               method: 'POST',
               body: fd,
             });
