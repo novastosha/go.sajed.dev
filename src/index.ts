@@ -17,6 +17,10 @@ function extractSlug(req: Request): string | null {
       return pathname.replace(/^\/go\/?/, '')
     }
 
+    if ((host === 'sjd.my')) {
+      return pathname.replace(/^\//, '')
+    }
+
     return null
   } catch (e) {
     return null
@@ -51,13 +55,18 @@ app.get("/qr/:slug", async (c) => {
 
 app.get('*', async (c) => {
   const req = c.req.raw
+  
+  const url = new URL(req.url)
+  if (url.hostname === "dash.sjd.my") {
+    return c.redirect(`https://go.sajed.dev/manage`, 301)
+  }
+
   const slug = extractSlug(req)
 
   if (slug === null || slug.length === 0) {
     return c.redirect('https://sajed.dev', 301)
   }
 
-  const url = new URL(req.url)
   const qs = url.search // includes leading '?' or ''
 
 
