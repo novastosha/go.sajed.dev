@@ -61,6 +61,11 @@ app.get('*', async (c) => {
     return c.redirect(`https://go.sajed.dev/manage`, 301)
   }
 
+  if (url.hostname.startsWith("puzzle.") || url.hostname.startsWith("pzl.")) {
+    const puzzleSlug = url.pathname.replace(/^\//, '').trim();
+    return c.redirect(`https://sajed.dev/puzzle${puzzleSlug ? `?puzzle=${puzzleSlug}` : ''}`, 301)
+  }
+
   const slug = extractSlug(req)
 
   if (slug === null || slug.length === 0) {
