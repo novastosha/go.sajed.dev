@@ -66,6 +66,11 @@ app.get('*', async (c) => {
     return c.redirect(`https://sajed.dev/puzzle${puzzleSlug ? `?puzzle=${puzzleSlug}` : ''}`, 301)
   }
 
+  if (url.hostname.startsWith("blog.") || url.hostname.startsWith("blg.")) {
+    const blogSlug = url.pathname.replace(/^\//, '').trim();
+    return c.redirect(`https://sajed.dev/blog${blogSlug ? `/?post=${blogSlug}` : ''}`, 301)
+  }
+
   const slug = extractSlug(req)
 
   if (slug === null || slug.length === 0) {
