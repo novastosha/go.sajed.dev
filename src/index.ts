@@ -76,6 +76,11 @@ app.get('*', async (c) => {
     return c.redirect(`https://sajed.dev/blog${blogSlug ? `/?post=${blogSlug}` : ''}`, 301)
   }
 
+  if (url.hostname === "dash.blog." || url.hostname === "dash.blg.") {
+    return c.redirect(`https://sajed.dev/blog/manage`, 301)
+  }
+  
+
   const slug = extractSlug(req)
 
   if (slug === null || slug.length === 0) {
