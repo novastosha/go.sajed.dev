@@ -55,7 +55,7 @@ app.get("/qr/:slug", async (c) => {
 
 app.get('*', async (c) => {
   const req = c.req.raw
-  
+
   const url = new URL(req.url)
   if (url.hostname === "dash.sjd.my") {
     return c.redirect(`https://go.sajed.dev/manage`, 301)
@@ -68,6 +68,11 @@ app.get('*', async (c) => {
 
   if (url.hostname.startsWith("blog.") || url.hostname.startsWith("blg.")) {
     const blogSlug = url.pathname.replace(/^\//, '').trim();
+
+    if (blogSlug === "manage") {
+      return c.redirect(`https://sajed.dev/blog/manage`, 301)
+    }
+
     return c.redirect(`https://sajed.dev/blog${blogSlug ? `/?post=${blogSlug}` : ''}`, 301)
   }
 
