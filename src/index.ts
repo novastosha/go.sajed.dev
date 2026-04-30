@@ -67,7 +67,7 @@ app.get('*', async (c) => {
 
       return c.redirect(`https://sajed.dev/intersect/?id=${intersectSlug}`, 301)
     }else{
-      return c.redirect(`https://sajed.dev/intersect/`, 301)
+      return c.redirect(`https://sajed.dev/intersect`, 301)
     }
   }
 
