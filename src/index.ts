@@ -65,7 +65,7 @@ app.get('*', async (c) => {
     const intersectSlug = url.pathname.replace(/^\//, '').trim();
     if (intersectSlug) {
 
-      return c.redirect(`https://sajed.dev/intersect/?id=${intersectSlug}`, 301)
+      return c.redirect(`https://sajed.dev/intersect?id=${intersectSlug}`, 301)
     }else{
       return c.redirect(`https://sajed.dev/intersect`, 301)
     }
