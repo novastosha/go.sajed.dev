@@ -61,7 +61,7 @@ app.get('*', async (c) => {
     return c.redirect(`https://go.sajed.dev/manage`, 301)
   }
 
-  if (url.hostname.startsWith("intersect.") || url.hostname.startsWith("isct.")) {
+  if (url.hostname.startsWith("intersect.") || url.hostname.startsWith("isct.") || url.hostname.startsWith("puzzle.") || url.hostname.startsWith("pzl.")) {
     const intersectSlug = url.pathname.replace(/^\//, '').trim();
     if (intersectSlug) {
 
@@ -71,10 +71,6 @@ app.get('*', async (c) => {
     }
   }
 
-  if (url.hostname.startsWith("puzzle.") || url.hostname.startsWith("pzl.")) {
-    const puzzleSlug = url.pathname.replace(/^\//, '').trim();
-    return c.redirect(`https://sajed.dev/puzzle${puzzleSlug ? `?puzzle=${puzzleSlug}` : ''}`, 301)
-  }
 
   if (url.hostname.startsWith("blog.") || url.hostname.startsWith("blg.")) {
     const blogSlug = url.pathname.replace(/^\//, '').trim();
